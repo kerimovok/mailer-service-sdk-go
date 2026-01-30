@@ -171,15 +171,6 @@ type AttachmentListItem struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-// ListMailsRequest represents query parameters for listing mails
-type ListMailsRequest struct {
-	Page    int    // Page number (default: 1)
-	PerPage int    // Items per page (default: 20)
-	Service string // Filter by service
-	Type    string // Filter by type
-	Status  string // Filter by status
-}
-
 // ListMailsResponse represents the paginated response from listing mails
 type ListMailsResponse struct {
 	Success    bool           `json:"success"`
@@ -190,40 +181,8 @@ type ListMailsResponse struct {
 	Pagination *Pagination    `json:"pagination,omitempty"`
 }
 
-// ListMails lists mails with optional filters and pagination
-func (c *Client) ListMails(ctx context.Context, req ListMailsRequest) (*ListMailsResponse, error) {
-	queryParams := make([]string, 0)
-	if req.Page > 0 {
-		queryParams = append(queryParams, fmt.Sprintf("page=%d", req.Page))
-	}
-	if req.PerPage > 0 {
-		queryParams = append(queryParams, fmt.Sprintf("per_page=%d", req.PerPage))
-	}
-	if req.Service != "" {
-		queryParams = append(queryParams, "service="+url.QueryEscape(req.Service))
-	}
-	if req.Type != "" {
-		queryParams = append(queryParams, "type="+url.QueryEscape(req.Type))
-	}
-	if req.Status != "" {
-		queryParams = append(queryParams, "status="+url.QueryEscape(req.Status))
-	}
-
-	path := c.baseURL + apiPathPrefix + "/mails"
-	if len(queryParams) > 0 {
-		path += "?" + strings.Join(queryParams, "&")
-	}
-
-	var result ListMailsResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to list mails")
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-// ListMailsWithQuery lists mails by forwarding the raw query string to mailer-service.
-func (c *Client) ListMailsWithQuery(ctx context.Context, queryString string) (*ListMailsResponse, error) {
+// ListMails lists mails by forwarding the raw query string to mailer-service.
+func (c *Client) ListMails(ctx context.Context, queryString string) (*ListMailsResponse, error) {
 	path := c.baseURL + apiPathPrefix + "/mails"
 	if queryString != "" {
 		path += "?" + queryString
@@ -270,12 +229,6 @@ type TemplateListItem struct {
 	UpdatedAt   string `json:"updatedAt"`
 }
 
-// ListTemplatesRequest represents query parameters for listing templates
-type ListTemplatesRequest struct {
-	Page    int  // Page number
-	PerPage int  // Items per page
-}
-
 // ListTemplatesResponse represents the paginated response from listing templates
 type ListTemplatesResponse struct {
 	Success    bool                `json:"success"`
@@ -286,31 +239,8 @@ type ListTemplatesResponse struct {
 	Pagination *Pagination         `json:"pagination,omitempty"`
 }
 
-// ListTemplates lists templates with pagination
-func (c *Client) ListTemplates(ctx context.Context, req ListTemplatesRequest) (*ListTemplatesResponse, error) {
-	queryParams := make([]string, 0)
-	if req.Page > 0 {
-		queryParams = append(queryParams, fmt.Sprintf("page=%d", req.Page))
-	}
-	if req.PerPage > 0 {
-		queryParams = append(queryParams, fmt.Sprintf("per_page=%d", req.PerPage))
-	}
-
-	path := c.baseURL + apiPathPrefix + "/templates"
-	if len(queryParams) > 0 {
-		path += "?" + strings.Join(queryParams, "&")
-	}
-
-	var result ListTemplatesResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to list templates")
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-// ListTemplatesWithQuery lists templates by forwarding the raw query string to mailer-service.
-func (c *Client) ListTemplatesWithQuery(ctx context.Context, queryString string) (*ListTemplatesResponse, error) {
+// ListTemplates lists templates by forwarding the raw query string to mailer-service.
+func (c *Client) ListTemplates(ctx context.Context, queryString string) (*ListTemplatesResponse, error) {
 	path := c.baseURL + apiPathPrefix + "/templates"
 	if queryString != "" {
 		path += "?" + queryString
@@ -348,13 +278,6 @@ func (c *Client) GetTemplate(ctx context.Context, id string) (*GetTemplateRespon
 
 // AttachmentListItem is reused for single attachment response
 
-// ListAttachmentsRequest represents query parameters for listing attachments
-type ListAttachmentsRequest struct {
-	Page    int    // Page number
-	PerPage int    // Items per page
-	MailID  string // Filter by mail ID
-}
-
 // ListAttachmentsResponse represents the paginated response from listing attachments
 type ListAttachmentsResponse struct {
 	Success    bool                  `json:"success"`
@@ -365,34 +288,8 @@ type ListAttachmentsResponse struct {
 	Pagination *Pagination           `json:"pagination,omitempty"`
 }
 
-// ListAttachments lists attachments with optional filters and pagination
-func (c *Client) ListAttachments(ctx context.Context, req ListAttachmentsRequest) (*ListAttachmentsResponse, error) {
-	queryParams := make([]string, 0)
-	if req.Page > 0 {
-		queryParams = append(queryParams, fmt.Sprintf("page=%d", req.Page))
-	}
-	if req.PerPage > 0 {
-		queryParams = append(queryParams, fmt.Sprintf("per_page=%d", req.PerPage))
-	}
-	if req.MailID != "" {
-		queryParams = append(queryParams, "mail_id="+url.QueryEscape(req.MailID))
-	}
-
-	path := c.baseURL + apiPathPrefix + "/attachments"
-	if len(queryParams) > 0 {
-		path += "?" + strings.Join(queryParams, "&")
-	}
-
-	var result ListAttachmentsResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to list attachments")
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-// ListAttachmentsWithQuery lists attachments by forwarding the raw query string to mailer-service.
-func (c *Client) ListAttachmentsWithQuery(ctx context.Context, queryString string) (*ListAttachmentsResponse, error) {
+// ListAttachments lists attachments by forwarding the raw query string to mailer-service.
+func (c *Client) ListAttachments(ctx context.Context, queryString string) (*ListAttachmentsResponse, error) {
 	path := c.baseURL + apiPathPrefix + "/attachments"
 	if queryString != "" {
 		path += "?" + queryString
