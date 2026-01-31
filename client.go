@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/kerimovok/go-pkg-utils/hmac"
 )
 
 const (
@@ -19,14 +21,14 @@ const (
 
 // Config holds configuration for the mailer service client
 type Config struct {
-	BaseURL string        // Mailer service base URL (e.g., "http://localhost:3002")
-	Timeout time.Duration // Request timeout (default: 10 seconds)
+	BaseURL    string        // Mailer service base URL (e.g., "http://localhost:3002")
+	HMACSecret string        // Shared HMAC secret for authentication
+	Timeout    time.Duration // Request timeout (default: 10 seconds)
 }
 
-// Client is the mailer service HTTP client
+// Client wraps the HMAC client for mailer-service communication
 type Client struct {
-	baseURL string
-	client  *http.Client
+	client *hmac.Client
 }
 
 // APIError represents an error returned by the mailer service API
@@ -69,14 +71,14 @@ func parseErrorResponse(statusCode int, body []byte) *APIError {
 		}
 		return &APIError{
 			StatusCode: statusCode,
-			Message:   errMessage,
-			Body:      bodyStr,
+			Message:    errMessage,
+			Body:       bodyStr,
 		}
 	}
 	return &APIError{
 		StatusCode: statusCode,
-		Message:   bodyStr,
-		Body:      bodyStr,
+		Message:    bodyStr,
+		Body:       bodyStr,
 	}
 }
 
@@ -89,13 +91,11 @@ func statusIn(code int, codes []int) bool {
 	return false
 }
 
-// do performs a GET request, checks status, and decodes JSON into result
-func (c *Client) do(ctx context.Context, method, path string, successStatuses []int, result interface{}, wrapErr string) error {
-	req, err := http.NewRequestWithContext(ctx, method, path, nil)
-	if err != nil {
-		return fmt.Errorf("%s: %w", wrapErr, err)
-	}
-	resp, err := c.client.Do(req)
+// do performs a request, checks status, and optionally decodes JSON into result.
+// successStatuses lists HTTP status codes treated as success (e.g. 200).
+// path is the path including optional query (e.g. "/api/v1/mails" or "/api/v1/mails?page=1").
+func (c *Client) do(method, path string, body interface{}, successStatuses []int, result interface{}, wrapErr string) error {
+	resp, err := c.client.DoRequest(method, path, body)
 	if err != nil {
 		return fmt.Errorf("%s: %w", wrapErr, err)
 	}
@@ -107,7 +107,7 @@ func (c *Client) do(ctx context.Context, method, path string, successStatuses []
 	}
 
 	if result != nil {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+		if err := hmac.ParseJSONResponse(resp, result); err != nil {
 			return fmt.Errorf("%s: %w", wrapErr, err)
 		}
 	}
@@ -121,6 +121,9 @@ func NewClient(config Config) (*Client, error) {
 	if config.BaseURL == "" {
 		return nil, fmt.Errorf("base URL is required")
 	}
+	if config.HMACSecret == "" {
+		return nil, fmt.Errorf("HMAC secret is required")
+	}
 
 	baseURL := strings.TrimRight(config.BaseURL, "/")
 	timeout := config.Timeout
@@ -128,10 +131,13 @@ func NewClient(config Config) (*Client, error) {
 		timeout = defaultTimeout
 	}
 
-	return &Client{
-		baseURL: baseURL,
-		client:  &http.Client{Timeout: timeout},
-	}, nil
+	hmacClient := hmac.NewClient(hmac.Config{
+		BaseURL:    baseURL,
+		HMACSecret: config.HMACSecret,
+		Timeout:    timeout,
+	})
+
+	return &Client{client: hmacClient}, nil
 }
 
 // Pagination contains pagination metadata (matches mailer-service / go-pkg-utils)
@@ -148,18 +154,18 @@ type Pagination struct {
 
 // MailListItem represents a mail record in list responses
 type MailListItem struct {
-	ID           string                 `json:"id"`
-	Service      string                 `json:"service"`
-	Type         string                 `json:"type"`
-	To           string                 `json:"to"`
-	Subject      string                 `json:"subject"`
-	Template     string                 `json:"template"`
-	Data         map[string]interface{} `json:"data,omitempty"`
-	Status       string                 `json:"status"`
-	Error        string                 `json:"error,omitempty"`
-	Attachments  []AttachmentListItem   `json:"attachments,omitempty"`
-	CreatedAt    string                 `json:"createdAt"`
-	UpdatedAt    string                 `json:"updatedAt"`
+	ID          string                 `json:"id"`
+	Service     string                 `json:"service"`
+	Type        string                 `json:"type"`
+	To          string                 `json:"to"`
+	Subject     string                 `json:"subject"`
+	Template    string                 `json:"template"`
+	Data        map[string]interface{} `json:"data,omitempty"`
+	Status      string                 `json:"status"`
+	Error       string                 `json:"error,omitempty"`
+	Attachments []AttachmentListItem   `json:"attachments,omitempty"`
+	CreatedAt   string                 `json:"createdAt"`
+	UpdatedAt   string                 `json:"updatedAt"`
 }
 
 // AttachmentListItem represents an attachment in list/detail
@@ -183,12 +189,12 @@ type ListMailsResponse struct {
 
 // ListMails lists mails by forwarding the raw query string to mailer-service.
 func (c *Client) ListMails(ctx context.Context, queryString string) (*ListMailsResponse, error) {
-	path := c.baseURL + apiPathPrefix + "/mails"
+	path := apiPathPrefix + "/mails"
 	if queryString != "" {
 		path += "?" + queryString
 	}
 	var result ListMailsResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to list mails")
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to list mails")
 	if err != nil {
 		return nil, err
 	}
@@ -197,11 +203,11 @@ func (c *Client) ListMails(ctx context.Context, queryString string) (*ListMailsR
 
 // GetMailResponse represents the response from getting a mail
 type GetMailResponse struct {
-	Success   bool           `json:"success"`
-	Message   string         `json:"message"`
-	Status    int            `json:"status"`
-	Timestamp string         `json:"timestamp,omitempty"`
-	Data      MailListItem   `json:"data"`
+	Success   bool         `json:"success"`
+	Message   string       `json:"message"`
+	Status    int          `json:"status"`
+	Timestamp string       `json:"timestamp,omitempty"`
+	Data      MailListItem `json:"data"`
 }
 
 // GetMail gets a mail by ID
@@ -209,9 +215,9 @@ func (c *Client) GetMail(ctx context.Context, id string) (*GetMailResponse, erro
 	if id == "" {
 		return nil, fmt.Errorf("mail id is required")
 	}
-	path := c.baseURL + apiPathPrefix + "/mails/" + pathSeg(id)
+	path := apiPathPrefix + "/mails/" + pathSeg(id)
 	var result GetMailResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to get mail")
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to get mail")
 	if err != nil {
 		return nil, err
 	}
@@ -231,22 +237,22 @@ type TemplateListItem struct {
 
 // ListTemplatesResponse represents the paginated response from listing templates
 type ListTemplatesResponse struct {
-	Success    bool                `json:"success"`
-	Message    string              `json:"message"`
-	Status     int                 `json:"status"`
-	Timestamp  string              `json:"timestamp,omitempty"`
-	Data       []TemplateListItem  `json:"data"`
-	Pagination *Pagination         `json:"pagination,omitempty"`
+	Success    bool               `json:"success"`
+	Message    string             `json:"message"`
+	Status     int                `json:"status"`
+	Timestamp  string             `json:"timestamp,omitempty"`
+	Data       []TemplateListItem `json:"data"`
+	Pagination *Pagination        `json:"pagination,omitempty"`
 }
 
 // ListTemplates lists templates by forwarding the raw query string to mailer-service.
 func (c *Client) ListTemplates(ctx context.Context, queryString string) (*ListTemplatesResponse, error) {
-	path := c.baseURL + apiPathPrefix + "/templates"
+	path := apiPathPrefix + "/templates"
 	if queryString != "" {
 		path += "?" + queryString
 	}
 	var result ListTemplatesResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to list templates")
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to list templates")
 	if err != nil {
 		return nil, err
 	}
@@ -255,11 +261,11 @@ func (c *Client) ListTemplates(ctx context.Context, queryString string) (*ListTe
 
 // GetTemplateResponse represents the response from getting a template
 type GetTemplateResponse struct {
-	Success   bool              `json:"success"`
-	Message   string            `json:"message"`
-	Status    int               `json:"status"`
-	Timestamp string            `json:"timestamp,omitempty"`
-	Data      TemplateListItem  `json:"data"`
+	Success   bool             `json:"success"`
+	Message   string           `json:"message"`
+	Status    int              `json:"status"`
+	Timestamp string           `json:"timestamp,omitempty"`
+	Data      TemplateListItem `json:"data"`
 }
 
 // GetTemplate gets a template by ID
@@ -267,9 +273,9 @@ func (c *Client) GetTemplate(ctx context.Context, id string) (*GetTemplateRespon
 	if id == "" {
 		return nil, fmt.Errorf("template id is required")
 	}
-	path := c.baseURL + apiPathPrefix + "/templates/" + pathSeg(id)
+	path := apiPathPrefix + "/templates/" + pathSeg(id)
 	var result GetTemplateResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to get template")
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to get template")
 	if err != nil {
 		return nil, err
 	}
@@ -280,22 +286,22 @@ func (c *Client) GetTemplate(ctx context.Context, id string) (*GetTemplateRespon
 
 // ListAttachmentsResponse represents the paginated response from listing attachments
 type ListAttachmentsResponse struct {
-	Success    bool                  `json:"success"`
-	Message    string                `json:"message"`
-	Status     int                   `json:"status"`
-	Timestamp  string                `json:"timestamp,omitempty"`
-	Data       []AttachmentListItem  `json:"data"`
-	Pagination *Pagination           `json:"pagination,omitempty"`
+	Success    bool                 `json:"success"`
+	Message    string               `json:"message"`
+	Status     int                  `json:"status"`
+	Timestamp  string               `json:"timestamp,omitempty"`
+	Data       []AttachmentListItem `json:"data"`
+	Pagination *Pagination          `json:"pagination,omitempty"`
 }
 
 // ListAttachments lists attachments by forwarding the raw query string to mailer-service.
 func (c *Client) ListAttachments(ctx context.Context, queryString string) (*ListAttachmentsResponse, error) {
-	path := c.baseURL + apiPathPrefix + "/attachments"
+	path := apiPathPrefix + "/attachments"
 	if queryString != "" {
 		path += "?" + queryString
 	}
 	var result ListAttachmentsResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to list attachments")
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to list attachments")
 	if err != nil {
 		return nil, err
 	}
@@ -304,11 +310,11 @@ func (c *Client) ListAttachments(ctx context.Context, queryString string) (*List
 
 // GetAttachmentResponse represents the response from getting an attachment
 type GetAttachmentResponse struct {
-	Success   bool                `json:"success"`
-	Message   string              `json:"message"`
-	Status    int                 `json:"status"`
-	Timestamp string              `json:"timestamp,omitempty"`
-	Data      AttachmentListItem  `json:"data"`
+	Success   bool               `json:"success"`
+	Message   string             `json:"message"`
+	Status    int                `json:"status"`
+	Timestamp string             `json:"timestamp,omitempty"`
+	Data      AttachmentListItem `json:"data"`
 }
 
 // GetAttachment gets an attachment by ID
@@ -316,9 +322,9 @@ func (c *Client) GetAttachment(ctx context.Context, id string) (*GetAttachmentRe
 	if id == "" {
 		return nil, fmt.Errorf("attachment id is required")
 	}
-	path := c.baseURL + apiPathPrefix + "/attachments/" + pathSeg(id)
+	path := apiPathPrefix + "/attachments/" + pathSeg(id)
 	var result GetAttachmentResponse
-	err := c.do(ctx, http.MethodGet, path, []int{http.StatusOK}, &result, "failed to get attachment")
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to get attachment")
 	if err != nil {
 		return nil, err
 	}

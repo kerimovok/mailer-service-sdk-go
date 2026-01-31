@@ -8,11 +8,14 @@ A Go SDK for interacting with the mailer-service microservice. This SDK provides
 go get github.com/kerimovok/mailer-service-sdk-go
 ```
 
+The SDK depends on `github.com/kerimovok/go-pkg-utils` for HMAC-signed HTTP requests; it is resolved automatically via `go mod`.
+
 ## Features
 
+- **HMAC Authentication**: All requests are automatically signed with HMAC-SHA256
 - **Type-safe**: Full type definitions for list/get responses (mails, templates, attachments)
 - **Error handling**: `APIError` and `IsAPIError()` for API-level errors
-- **Pagination**: List endpoints support page/per_page and optional filters
+- **Pagination**: List endpoints support page/per_page and optional filters via query string
 
 ## Quick Start
 
@@ -29,8 +32,9 @@ import (
 
 func main() {
     client, err := mailersdk.NewClient(mailersdk.Config{
-        BaseURL: "http://localhost:3002",
-        Timeout: 10 * time.Second,
+        BaseURL:    "http://localhost:3002",
+        HMACSecret: "your-shared-secret",
+        Timeout:    10 * time.Second,
     })
     if err != nil {
         panic(err)
@@ -38,10 +42,8 @@ func main() {
 
     ctx := context.Background()
 
-    // List mails
-    resp, err := client.ListMails(ctx, mailersdk.ListMailsRequest{
-        Page: 1, PerPage: 20,
-    })
+    // List mails (query string: page, per_page, filters, etc.)
+    resp, err := client.ListMails(ctx, "page=1&per_page=20")
     if err != nil {
         panic(err)
     }
@@ -60,22 +62,23 @@ func main() {
 
 ### Mails
 
-- **ListMails(ctx, req)** – Paginated list with optional filters: `Page`, `PerPage`, `Service`, `Type`, `Status`
+- **ListMails(ctx, queryString)** – Paginated list; pass query string (e.g. `page=1&per_page=20`, optional filters)
 - **GetMail(ctx, id)** – Get a mail by ID
 
 ### Templates
 
-- **ListTemplates(ctx, req)** – Paginated list: `Page`, `PerPage`
+- **ListTemplates(ctx, queryString)** – Paginated list; pass query string (e.g. `page=1&per_page=20`)
 - **GetTemplate(ctx, id)** – Get a template by ID
 
 ### Attachments
 
-- **ListAttachments(ctx, req)** – Paginated list: `Page`, `PerPage`, `MailID`
+- **ListAttachments(ctx, queryString)** – Paginated list; pass query string (e.g. `page=1&per_page=20&mail_id=...`)
 - **GetAttachment(ctx, id)** – Get an attachment by ID
 
 ## Configuration
 
 - **BaseURL**: Mailer service base URL (e.g. `http://localhost:3002`)
+- **HMACSecret**: The shared secret for HMAC authentication (required)
 - **Timeout**: Request timeout (optional, default 10s)
 
 ## Error Handling
