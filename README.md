@@ -78,7 +78,7 @@ func main() {
 ## Configuration
 
 - **BaseURL**: Mailer service base URL (e.g. `http://localhost:3002`)
-- **HMACSecret**: The shared secret for HMAC authentication (required)
+- **HMACSecret**: Optional. When set, requests are HMAC-signed (for mailer with HMAC enabled). When empty, plain HTTP (for mailer with HMAC disabled).
 - **Timeout**: Request timeout (optional, default 10s)
 
 ## Error Handling
