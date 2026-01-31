@@ -11,8 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/kerimovok/go-pkg-utils/hmac"
 )
 
 const (
@@ -22,14 +20,12 @@ const (
 
 // Config holds configuration for the mailer service client
 type Config struct {
-	BaseURL    string        // Mailer service base URL (e.g., "http://localhost:3002")
-	HMACSecret string        // Optional. When set, requests are HMAC-signed; when empty, plain HTTP (for mailer with HMAC disabled)
-	Timeout    time.Duration // Request timeout (default: 10 seconds)
+	BaseURL string        // Mailer service base URL (e.g., "http://localhost:3002")
+	Timeout time.Duration // Request timeout (default: 10 seconds)
 }
 
-// Client is the mailer service HTTP client. When HMACSecret was set it uses HMAC-signed requests; otherwise plain HTTP.
+// Client is the mailer service HTTP client (plain HTTP).
 type Client struct {
-	hmacClient *hmac.Client
 	baseURL    string
 	httpClient *http.Client
 }
@@ -98,13 +94,7 @@ func statusIn(code int, codes []int) bool {
 // successStatuses lists HTTP status codes treated as success (e.g. 200).
 // path is the path including optional query (e.g. "/api/v1/mails" or "/api/v1/mails?page=1").
 func (c *Client) do(method, path string, body interface{}, successStatuses []int, result interface{}, wrapErr string) error {
-	var resp *http.Response
-	var err error
-	if c.hmacClient != nil {
-		resp, err = c.hmacClient.DoRequest(method, path, body)
-	} else {
-		resp, err = c.doPlainRequest(method, path, body)
-	}
+	resp, err := c.doRequest(method, path, body)
 	if err != nil {
 		return fmt.Errorf("%s: %w", wrapErr, err)
 	}
@@ -116,21 +106,15 @@ func (c *Client) do(method, path string, body interface{}, successStatuses []int
 	}
 
 	if result != nil {
-		if c.hmacClient != nil {
-			if err := hmac.ParseJSONResponse(resp, result); err != nil {
-				return fmt.Errorf("%s: %w", wrapErr, err)
-			}
-		} else {
-			if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-				return fmt.Errorf("%s: %w", wrapErr, err)
-			}
+		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+			return fmt.Errorf("%s: %w", wrapErr, err)
 		}
 	}
 	return nil
 }
 
-// doPlainRequest performs an unsigned HTTP request (used when HMACSecret is not set).
-func (c *Client) doPlainRequest(method, path string, body interface{}) (*http.Response, error) {
+// doRequest performs an HTTP request.
+func (c *Client) doRequest(method, path string, body interface{}) (*http.Response, error) {
 	fullURL := c.baseURL + path
 	var bodyReader io.Reader
 	if body != nil {
@@ -152,9 +136,7 @@ func (c *Client) doPlainRequest(method, path string, body interface{}) (*http.Re
 
 func pathSeg(s string) string { return url.PathEscape(s) }
 
-// NewClient creates a new mailer service client.
-// When HMACSecret is set, all requests are HMAC-signed (for mailer with HMAC enabled).
-// When HMACSecret is empty, requests are plain HTTP (for mailer with HMAC disabled).
+// NewClient creates a new mailer service client (plain HTTP).
 func NewClient(config Config) (*Client, error) {
 	if config.BaseURL == "" {
 		return nil, fmt.Errorf("base URL is required")
@@ -164,15 +146,6 @@ func NewClient(config Config) (*Client, error) {
 	timeout := config.Timeout
 	if timeout == 0 {
 		timeout = defaultTimeout
-	}
-
-	if config.HMACSecret != "" {
-		hmacClient := hmac.NewClient(hmac.Config{
-			BaseURL:    baseURL,
-			HMACSecret: config.HMACSecret,
-			Timeout:    timeout,
-		})
-		return &Client{hmacClient: hmacClient}, nil
 	}
 
 	return &Client{
