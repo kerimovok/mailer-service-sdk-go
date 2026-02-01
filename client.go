@@ -340,11 +340,12 @@ func (c *Client) CreateTemplate(ctx context.Context, body *CreateTemplateRequest
 	return &result, nil
 }
 
-// UpdateTemplateRequest is the body for updating a template (name, content, description)
+// UpdateTemplateRequest is the body for updating a template (name, content, description, isActive)
 type UpdateTemplateRequest struct {
 	Name        string `json:"name"`
 	Content     string `json:"content"`
 	Description string `json:"description,omitempty"`
+	IsActive    bool   `json:"isActive"`
 }
 
 // UpdateTemplate updates a template by ID (PUT /api/v1/templates/:id)
