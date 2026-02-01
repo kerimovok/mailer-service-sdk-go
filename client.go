@@ -296,6 +296,36 @@ func (c *Client) GetTemplate(ctx context.Context, id string) (*GetTemplateRespon
 	return &result, nil
 }
 
+// CreateTemplateRequest is the body for creating a template
+type CreateTemplateRequest struct {
+	Name        string `json:"name"`
+	Content     string `json:"content"`
+	Description string `json:"description,omitempty"`
+}
+
+// CreateTemplateResponse represents the response from creating a template (201)
+type CreateTemplateResponse struct {
+	Success   bool             `json:"success"`
+	Message   string           `json:"message"`
+	Status    int              `json:"status"`
+	Timestamp string           `json:"timestamp,omitempty"`
+	Data      TemplateListItem `json:"data"`
+}
+
+// CreateTemplate creates a template (POST /api/v1/templates)
+func (c *Client) CreateTemplate(ctx context.Context, body *CreateTemplateRequest) (*CreateTemplateResponse, error) {
+	if body == nil {
+		return nil, fmt.Errorf("create template body is required")
+	}
+	path := apiPathPrefix + "/templates"
+	var result CreateTemplateResponse
+	err := c.do(http.MethodPost, path, body, []int{http.StatusCreated}, &result, "failed to create template")
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // AttachmentListItem is reused for single attachment response
 
 // ListAttachmentsResponse represents the paginated response from listing attachments
