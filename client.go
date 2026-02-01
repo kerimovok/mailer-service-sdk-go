@@ -296,6 +296,20 @@ func (c *Client) GetTemplate(ctx context.Context, id string) (*GetTemplateRespon
 	return &result, nil
 }
 
+// GetTemplateByName gets a template by name (GET /api/v1/templates/name/:name)
+func (c *Client) GetTemplateByName(ctx context.Context, name string) (*GetTemplateResponse, error) {
+	if name == "" {
+		return nil, fmt.Errorf("template name is required")
+	}
+	path := apiPathPrefix + "/templates/name/" + pathSeg(name)
+	var result GetTemplateResponse
+	err := c.do(http.MethodGet, path, nil, []int{http.StatusOK}, &result, "failed to get template by name")
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // CreateTemplateRequest is the body for creating a template
 type CreateTemplateRequest struct {
 	Name        string `json:"name"`
@@ -324,6 +338,39 @@ func (c *Client) CreateTemplate(ctx context.Context, body *CreateTemplateRequest
 		return nil, err
 	}
 	return &result, nil
+}
+
+// UpdateTemplateRequest is the body for updating a template (name, content, description)
+type UpdateTemplateRequest struct {
+	Name        string `json:"name"`
+	Content     string `json:"content"`
+	Description string `json:"description,omitempty"`
+}
+
+// UpdateTemplate updates a template by ID (PUT /api/v1/templates/:id)
+func (c *Client) UpdateTemplate(ctx context.Context, id string, body *UpdateTemplateRequest) (*GetTemplateResponse, error) {
+	if id == "" {
+		return nil, fmt.Errorf("template id is required")
+	}
+	if body == nil {
+		return nil, fmt.Errorf("update template body is required")
+	}
+	path := apiPathPrefix + "/templates/" + pathSeg(id)
+	var result GetTemplateResponse
+	err := c.do(http.MethodPut, path, body, []int{http.StatusOK}, &result, "failed to update template")
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// DeleteTemplate deletes a template by ID (DELETE /api/v1/templates/:id)
+func (c *Client) DeleteTemplate(ctx context.Context, id string) error {
+	if id == "" {
+		return fmt.Errorf("template id is required")
+	}
+	path := apiPathPrefix + "/templates/" + pathSeg(id)
+	return c.do(http.MethodDelete, path, nil, []int{http.StatusOK, http.StatusNoContent}, nil, "failed to delete template")
 }
 
 // AttachmentListItem is reused for single attachment response
