@@ -201,6 +201,35 @@ type ListMailsResponse struct {
 	Pagination *Pagination    `json:"pagination,omitempty"`
 }
 
+// SendMailRequest is the body for POST /api/v1/mails (synchronous send via HTTP)
+type SendMailRequest struct {
+	To          string                 `json:"to"`
+	Subject     string                 `json:"subject"`
+	Template    string                 `json:"template"`
+	Data        map[string]interface{} `json:"data"`
+	Attachments []SendMailAttachment   `json:"attachments,omitempty"`
+}
+
+// SendMailAttachment represents an attachment reference for SendMailRequest
+type SendMailAttachment struct {
+	File string `json:"file"`
+}
+
+// SendMail sends an email synchronously (POST /api/v1/mails). For production traffic, prefer the queue.
+// Returns the created mail record (201).
+func (c *Client) SendMail(ctx context.Context, body *SendMailRequest) (*GetMailResponse, error) {
+	if body == nil {
+		return nil, fmt.Errorf("send mail body is required")
+	}
+	path := apiPathPrefix + "/mails"
+	var result GetMailResponse
+	err := c.do(http.MethodPost, path, body, []int{http.StatusCreated}, &result, "failed to send mail")
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // ListMails lists mails by forwarding the raw query string to mailer-service.
 func (c *Client) ListMails(ctx context.Context, queryString string) (*ListMailsResponse, error) {
 	path := apiPathPrefix + "/mails"
